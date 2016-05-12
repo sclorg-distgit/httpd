@@ -1,14 +1,21 @@
 # ./pullrev.sh 1332643 1345599 1487772
-
+ 
 https://bugzilla.redhat.com//show_bug.cgi?id=809599
+
+Backport of (deprecated) NPN support from upstream, with
+added support for Protocols in the same way as ALPN is
+supported.
+
+Upstream commits:
 
 http://svn.apache.org/viewvc?view=revision&revision=1332643
 http://svn.apache.org/viewvc?view=revision&revision=1345599
 http://svn.apache.org/viewvc?view=revision&revision=1487772
 
---- httpd-2.4.6/modules/ssl/mod_ssl.c.r1332643+
-+++ httpd-2.4.6/modules/ssl/mod_ssl.c
-@@ -413,6 +413,37 @@ int ssl_engine_disable(conn_rec *c)
+diff -uap httpd-2.4.18/modules/ssl/mod_ssl.c.r1332643+ httpd-2.4.18/modules/ssl/mod_ssl.c
+--- httpd-2.4.18/modules/ssl/mod_ssl.c.r1332643+
++++ httpd-2.4.18/modules/ssl/mod_ssl.c
+@@ -439,6 +439,13 @@ int ssl_engine_disable(conn_rec *c)
      return 1;
  }
  
@@ -16,37 +23,13 @@ http://svn.apache.org/viewvc?view=revision&revision=1487772
 +                               ssl_npn_advertise_protos advertisefn,
 +                               ssl_npn_proto_negotiated negotiatedfn)
 +{
-+#ifdef HAVE_TLS_NPN
-+    SSLConnRec *sslconn = myConnConfig(c);
-+
-+    if (!sslconn) {
-+        return DECLINED;
-+    }
-+
-+    if (!sslconn->npn_advertfns) {
-+        sslconn->npn_advertfns = 
-+            apr_array_make(c->pool, 5, sizeof(ssl_npn_advertise_protos));
-+        sslconn->npn_negofns = 
-+            apr_array_make(c->pool, 5, sizeof(ssl_npn_proto_negotiated));
-+    }
-+
-+    if (advertisefn)
-+        APR_ARRAY_PUSH(sslconn->npn_advertfns, ssl_npn_advertise_protos) =
-+            advertisefn;
-+    if (negotiatedfn)
-+        APR_ARRAY_PUSH(sslconn->npn_negofns, ssl_npn_proto_negotiated) =
-+            negotiatedfn;
-+
-+    return OK;
-+#else
 +    return DECLINED;
-+#endif
 +}
 +
  int ssl_init_ssl_connection(conn_rec *c, request_rec *r)
  {
      SSLSrvConfigRec *sc;
-@@ -584,6 +615,7 @@ static void ssl_register_hooks(apr_pool_
+@@ -624,6 +631,7 @@ static void ssl_register_hooks(apr_pool_
  
      APR_REGISTER_OPTIONAL_FN(ssl_proxy_enable);
      APR_REGISTER_OPTIONAL_FN(ssl_engine_disable);
@@ -54,8 +37,9 @@ http://svn.apache.org/viewvc?view=revision&revision=1487772
  
      ap_register_auth_provider(p, AUTHZ_PROVIDER_GROUP, "ssl",
                                AUTHZ_PROVIDER_VERSION,
---- httpd-2.4.6/modules/ssl/mod_ssl.h.r1332643+
-+++ httpd-2.4.6/modules/ssl/mod_ssl.h
+diff -uap httpd-2.4.18/modules/ssl/mod_ssl.h.r1332643+ httpd-2.4.18/modules/ssl/mod_ssl.h
+--- httpd-2.4.18/modules/ssl/mod_ssl.h.r1332643+
++++ httpd-2.4.18/modules/ssl/mod_ssl.h
 @@ -63,5 +63,40 @@ APR_DECLARE_OPTIONAL_FN(int, ssl_proxy_e
  
  APR_DECLARE_OPTIONAL_FN(int, ssl_engine_disable, (conn_rec *));
@@ -97,12 +81,13 @@ http://svn.apache.org/viewvc?view=revision&revision=1487772
 +
  #endif /* __MOD_SSL_H__ */
  /** @} */
---- httpd-2.4.6/modules/ssl/ssl_engine_init.c.r1332643+
-+++ httpd-2.4.6/modules/ssl/ssl_engine_init.c
-@@ -725,6 +725,11 @@ static void ssl_init_ctx_callbacks(serve
-     SSL_CTX_set_tmp_dh_callback(ctx,  ssl_callback_TmpDH);
- 
-     SSL_CTX_set_info_callback(ctx, ssl_callback_Info);
+diff -uap httpd-2.4.18/modules/ssl/ssl_engine_init.c.r1332643+ httpd-2.4.18/modules/ssl/ssl_engine_init.c
+--- httpd-2.4.18/modules/ssl/ssl_engine_init.c.r1332643+
++++ httpd-2.4.18/modules/ssl/ssl_engine_init.c
+@@ -636,6 +636,11 @@ static void ssl_init_ctx_callbacks(serve
+ #ifdef HAVE_TLS_ALPN
+     SSL_CTX_set_alpn_select_cb(ctx, ssl_callback_alpn_select, NULL);
+ #endif
 +
 +#ifdef HAVE_TLS_NPN
 +    SSL_CTX_set_next_protos_advertised_cb(
@@ -111,9 +96,10 @@ http://svn.apache.org/viewvc?view=revision&revision=1487772
  }
  
  static apr_status_t ssl_init_ctx_verify(server_rec *s,
---- httpd-2.4.6/modules/ssl/ssl_engine_io.c.r1332643+
-+++ httpd-2.4.6/modules/ssl/ssl_engine_io.c
-@@ -297,6 +297,7 @@ typedef struct {
+diff -uap httpd-2.4.18/modules/ssl/ssl_engine_io.c.r1332643+ httpd-2.4.18/modules/ssl/ssl_engine_io.c
+--- httpd-2.4.18/modules/ssl/ssl_engine_io.c.r1332643+
++++ httpd-2.4.18/modules/ssl/ssl_engine_io.c
+@@ -319,6 +319,7 @@ typedef struct {
      apr_pool_t *pool;
      char buffer[AP_IOBUFSIZE];
      ssl_filter_ctx_t *filter_ctx;
@@ -121,8 +107,8 @@ http://svn.apache.org/viewvc?view=revision&revision=1487772
  } bio_filter_in_ctx_t;
  
  /*
-@@ -1400,6 +1401,37 @@ static apr_status_t ssl_io_filter_input(
-         APR_BRIGADE_INSERT_TAIL(bb, bucket);
+@@ -1377,6 +1378,38 @@ static apr_status_t ssl_io_filter_input(
+         return ssl_io_filter_error(f, bb, status, is_init);
      }
  
 +#ifdef HAVE_TLS_NPN
@@ -132,34 +118,35 @@ http://svn.apache.org/viewvc?view=revision&revision=1487772
 +     * npn_proto_negotiated_hook. */
 +    if (!inctx->npn_finished) {
 +        SSLConnRec *sslconn = myConnConfig(f->c);
++        apr_array_header_t *protos = apr_array_make(f->c->pool, 1, sizeof(char *));
 +        const unsigned char *next_proto = NULL;
 +        unsigned next_proto_len = 0;
-+        int n;
-+
-+        if (sslconn->npn_negofns) {
-+            SSL_get0_next_proto_negotiated(
-+                inctx->ssl, &next_proto, &next_proto_len);
-+            ap_log_cerror(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, f->c,
-+                          APLOGNO(02306) "SSL NPN negotiated protocol: '%*s'",
++        const unsigned char *out;
++        unsigned char outlen;
++        
++        SSL_get0_next_proto_negotiated(inctx->ssl, &next_proto, &next_proto_len);
++        if (next_proto_len) {
++            ap_log_cerror(APLOG_MARK, APLOG_TRACE1, 0, f->c,
++                          APLOGNO(02306) "SSL NPN negotiated protocol: '%.*s'",
 +                          next_proto_len, (const char*)next_proto);
++
++            APR_ARRAY_PUSH(protos, char *) =
++              apr_pstrmemdup(f->c->pool, (const char *)next_proto, next_proto_len);
 +            
-+            for (n = 0; n < sslconn->npn_negofns->nelts; n++) {
-+                ssl_npn_proto_negotiated fn = 
-+                    APR_ARRAY_IDX(sslconn->npn_negofns, n, ssl_npn_proto_negotiated);
-+                
-+                if (fn(f->c, (const char *)next_proto, next_proto_len) == DONE)
-+                    break;
-+            }
++            if (modssl_select_protocol(inctx->ssl, f->c, sslconn, protos,
++                                       &out, &outlen) != SSL_TLSEXT_ERR_OK)
++                ap_log_cerror(APLOG_MARK, APLOG_INFO, 0, f->c,
++                              "SSL NPN negotiation failed");
 +        }
 +            
 +        inctx->npn_finished = 1;
 +    }
 +#endif
 +
-     return APR_SUCCESS;
- }
- 
-@@ -1881,6 +1913,7 @@ static void ssl_io_input_add_filter(ssl_
+     if (is_init) {
+         /* protocol module needs to handshake before sending
+          * data to client (e.g. NNTP or FTP)
+@@ -1899,6 +1932,7 @@ static void ssl_io_input_add_filter(ssl_
      inctx->block = APR_BLOCK_READ;
      inctx->pool = c->pool;
      inctx->filter_ctx = filter_ctx;
@@ -167,12 +154,62 @@ http://svn.apache.org/viewvc?view=revision&revision=1487772
  }
  
  /* The request_rec pointer is passed in here only to ensure that the
---- httpd-2.4.6/modules/ssl/ssl_engine_kernel.c.r1332643+
-+++ httpd-2.4.6/modules/ssl/ssl_engine_kernel.c
-@@ -2161,6 +2161,97 @@ int ssl_callback_SessionTicket(SSL *ssl,
+diff -uap httpd-2.4.18/modules/ssl/ssl_engine_kernel.c.r1332643+ httpd-2.4.18/modules/ssl/ssl_engine_kernel.c
+--- httpd-2.4.18/modules/ssl/ssl_engine_kernel.c.r1332643+
++++ httpd-2.4.18/modules/ssl/ssl_engine_kernel.c
+@@ -2297,6 +2297,142 @@ int ssl_callback_SessionTicket(SSL *ssl,
  }
  #endif /* HAVE_TLS_SESSION_TICKETS */
  
++#if defined(HAVE_TLS_NPN) || defined(HAVE_TLS_ALPN)
++int modssl_select_protocol(SSL *ssl, conn_rec *c, SSLConnRec *sslconn,
++			   apr_array_header_t *client_protos,
++			   const unsigned char **out, unsigned char *outlen)
++{
++    const char *proposed;
++    size_t len;
++
++    /* The order the callbacks are invoked from TLS extensions is, unfortunately
++     * not defined and older openssl versions do call ALPN selection before
++     * they callback the SNI. We need to make sure that we know which vhost
++     * we are dealing with so we respect the correct protocols.
++     */
++    init_vhost(c, ssl);
++    
++    proposed = ap_select_protocol(c, NULL, sslconn->server, client_protos);
++    if (!proposed) {
++        proposed = ap_get_protocol(c);
++    }
++    
++    len = strlen(proposed);
++    if (len > 255) {
++        ap_log_cerror(APLOG_MARK, APLOG_ERR, 0, c, APLOGNO(02840)
++                      "ALPN negotiated protocol name too long");
++        return SSL_TLSEXT_ERR_ALERT_FATAL;
++    }
++    *out = (const unsigned char *)proposed;
++    *outlen = (unsigned char)len;
++
++    ap_log_cerror(APLOG_MARK, APLOG_TRACE8, 0, c,
++		  "protocol switching from '%s' to '%s'",
++		  ap_get_protocol(c), proposed);
++        
++    if (strcmp(proposed, ap_get_protocol(c))) {
++        apr_status_t status;
++        
++        status = ap_switch_protocol(c, NULL, sslconn->server, proposed);
++        if (status != APR_SUCCESS) {
++            ap_log_cerror(APLOG_MARK, APLOG_ERR, status, c,
++                          APLOGNO(02908) "protocol switch to '%s' failed",
++                          proposed);
++            return SSL_TLSEXT_ERR_ALERT_FATAL;
++        }
++    }
++
++    return SSL_TLSEXT_ERR_OK;
++}
++#endif /* defined(HAVE_TLS_NPN) || defined(HAVE_TLS_ALPN) */
++
 +#ifdef HAVE_TLS_NPN
 +/*
 + * This callback function is executed when SSL needs to decide what protocols
@@ -186,7 +223,7 @@ http://svn.apache.org/viewvc?view=revision&revision=1487772
 +{
 +    conn_rec *c = (conn_rec*)SSL_get_app_data(ssl);
 +    SSLConnRec *sslconn = myConnConfig(c);
-+    apr_array_header_t *protos;
++    const apr_array_header_t *protos;
 +    int num_protos;
 +    unsigned int size;
 +    int i;
@@ -196,23 +233,17 @@ http://svn.apache.org/viewvc?view=revision&revision=1487772
 +    *data_out = NULL;
 +    *size_out = 0;
 +
-+    /* If the connection object is not available, or there are no NPN
-+     * hooks registered, then there's nothing for us to do. */
-+    if (c == NULL || sslconn->npn_advertfns == NULL) {
-+        return SSL_TLSEXT_ERR_OK;
++    /* If the connection object is not available, or there are no
++       upgrades available, do nothing. */
++    if (!c || ap_get_protocol_upgrades(c, NULL, sslconn->server, 0, &protos)) {
++	return SSL_TLSEXT_ERR_NOACK;
 +    }
 +
-+    /* Invoke our npn_advertise_protos hook, giving other modules a chance to
-+     * add alternate protocol names to advertise. */
-+    protos = apr_array_make(c->pool, 0, sizeof(char *));
-+    for (i = 0; i < sslconn->npn_advertfns->nelts; i++) {
-+        ssl_npn_advertise_protos fn = 
-+            APR_ARRAY_IDX(sslconn->npn_advertfns, i, ssl_npn_advertise_protos);
-+        
-+        if (fn(c, protos) == DONE)
-+            break;
++    num_protos = protos ? protos->nelts : 0;
++
++    if (num_protos == 0) {
++        return SSL_TLSEXT_ERR_NOACK;
 +    }
-+    num_protos = protos->nelts;
 +
 +    /* We now have a list of null-terminated strings; we need to concatenate
 +     * them together into a single string, where each protocol name is prefixed
@@ -254,6 +285,8 @@ http://svn.apache.org/viewvc?view=revision&revision=1487772
 +        ++start;
 +        memcpy(start, string, length * sizeof(unsigned char));
 +        start += length;
++	ap_log_cerror(APLOG_MARK, APLOG_DEBUG, 0, c, 
++		      "SSL NPN protocol advertising: %s", string);
 +    }
 +
 +    /* Success. */
@@ -264,11 +297,63 @@ http://svn.apache.org/viewvc?view=revision&revision=1487772
 +
 +#endif /* HAVE_TLS_NPN */
 +
- #ifdef HAVE_SRP
+ #ifdef HAVE_TLS_ALPN
  
- int ssl_callback_SRPServerParams(SSL *ssl, int *ad, void *arg)
---- httpd-2.4.6/modules/ssl/ssl_private.h.r1332643+
-+++ httpd-2.4.6/modules/ssl/ssl_private.h
+ /*
+@@ -2319,8 +2455,6 @@ int ssl_callback_alpn_select(SSL *ssl,
+     conn_rec *c = (conn_rec*)SSL_get_app_data(ssl);
+     SSLConnRec *sslconn = myConnConfig(c);
+     apr_array_header_t *client_protos;
+-    const char *proposed;
+-    size_t len;
+     int i;
+ 
+     /* If the connection object is not available,
+@@ -2350,40 +2484,7 @@ int ssl_callback_alpn_select(SSL *ssl,
+         i += plen;
+     }
+ 
+-    /* The order the callbacks are invoked from TLS extensions is, unfortunately
+-     * not defined and older openssl versions do call ALPN selection before
+-     * they callback the SNI. We need to make sure that we know which vhost
+-     * we are dealing with so we respect the correct protocols.
+-     */
+-    init_vhost(c, ssl);
+-    
+-    proposed = ap_select_protocol(c, NULL, sslconn->server, client_protos);
+-    if (!proposed) {
+-        proposed = ap_get_protocol(c);
+-    }
+-    
+-    len = strlen(proposed);
+-    if (len > 255) {
+-        ap_log_cerror(APLOG_MARK, APLOG_ERR, 0, c, APLOGNO(02840)
+-                      "ALPN negotiated protocol name too long");
+-        return SSL_TLSEXT_ERR_ALERT_FATAL;
+-    }
+-    *out = (const unsigned char *)proposed;
+-    *outlen = (unsigned char)len;
+-        
+-    if (strcmp(proposed, ap_get_protocol(c))) {
+-        apr_status_t status;
+-        
+-        status = ap_switch_protocol(c, NULL, sslconn->server, proposed);
+-        if (status != APR_SUCCESS) {
+-            ap_log_cerror(APLOG_MARK, APLOG_ERR, status, c,
+-                          APLOGNO(02908) "protocol switch to '%s' failed",
+-                          proposed);
+-            return SSL_TLSEXT_ERR_ALERT_FATAL;
+-        }
+-    }
+-
+-    return SSL_TLSEXT_ERR_OK;
++    return modssl_select_protocol(ssl, c, sslconn, client_protos, out, outlen);
+ }
+ #endif /* HAVE_TLS_ALPN */
+ 
+diff -uap httpd-2.4.18/modules/ssl/ssl_private.h.r1332643+ httpd-2.4.18/modules/ssl/ssl_private.h
+--- httpd-2.4.18/modules/ssl/ssl_private.h.r1332643+
++++ httpd-2.4.18/modules/ssl/ssl_private.h
 @@ -98,6 +98,8 @@
  #include <openssl/x509_vfy.h>
  #include <openssl/ocsp.h>
@@ -278,7 +363,7 @@ http://svn.apache.org/viewvc?view=revision&revision=1487772
  /* Avoid tripping over an engine build installed globally and detected
   * when the user points at an explicit non-engine flavor of OpenSSL
   */
-@@ -139,6 +141,11 @@
+@@ -127,6 +129,11 @@
  #define HAVE_FIPS
  #endif
  
@@ -290,24 +375,14 @@ http://svn.apache.org/viewvc?view=revision&revision=1487772
  #if defined(SSL_OP_NO_TLSv1_2)
  #define HAVE_TLSV1_X
  #endif
-@@ -487,6 +494,12 @@ typedef struct {
-                      * connection */
-     } reneg_state;
- 
-+#ifdef HAVE_TLS_NPN
-+    /* Poor man's inter-module optional hooks for NPN. */
-+    apr_array_header_t *npn_advertfns; /* list of ssl_npn_advertise_protos callbacks */
-+    apr_array_header_t *npn_negofns; /* list of ssl_npn_proto_negotiated callbacks. */
-+#endif
-+
-     server_rec *server;
- } SSLConnRec;
- 
-@@ -842,6 +855,7 @@ int          ssl_callback_ServerNameIndi
+@@ -816,6 +823,10 @@ int          ssl_callback_ServerNameIndi
  int         ssl_callback_SessionTicket(SSL *, unsigned char *, unsigned char *,
                                         EVP_CIPHER_CTX *, HMAC_CTX *, int);
  #endif
 +int ssl_callback_AdvertiseNextProtos(SSL *ssl, const unsigned char **data, unsigned int *len, void *arg);
++int modssl_select_protocol(SSL *ssl, conn_rec *c, SSLConnRec *sslconn,
++			   apr_array_header_t *client_protos,
++			   const unsigned char **out, unsigned char *outlen);
  
- /**  Session Cache Support  */
- apr_status_t ssl_scache_init(server_rec *, apr_pool_t *);
+ #ifdef HAVE_TLS_ALPN
+ int ssl_callback_alpn_select(SSL *ssl, const unsigned char **out,

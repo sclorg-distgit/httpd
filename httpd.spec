@@ -1,7 +1,12 @@
 %{?scl:%scl_package httpd}
 
+%if 0%{?rhel} >= 7
 %define use_systemd 1
 %define use_system_apr 1
+%else
+%define use_systemd 0
+%define use_system_apr 0
+%endif
 
 # If we are using system APR and building as collection, we have to set
 # apr prefix to _root_prefix
@@ -43,8 +48,8 @@
 
 Summary: Apache HTTP Server
 Name: %{?scl:%scl_prefix}httpd
-Version: 2.4.12
-Release: 7%{?dist}
+Version: 2.4.18
+Release: 10%{?dist}
 URL: http://httpd.apache.org/
 Source0: http://www.apache.org/dist/httpd/httpd-%{version}.tar.bz2
 Source1: index.html
@@ -81,11 +86,12 @@ Source41: htcacheclean.sysconf
 Source42: htcacheclean.init
 # build/scripts patches
 Patch1: httpd-2.4.1-apctl.patch
-Patch2: httpd-2.4.3-apxs.patch
+Patch2: httpd-2.4.18-apxs.patch
 Patch3: httpd-2.4.1-deplibs.patch
 Patch5: httpd-2.4.3-layout.patch
 Patch6: httpd-2.4.3-apctl-systemd.patch
 Patch7: httpd-2.4.12-skiplist.patch
+Patch8: httpd-2.4.3-mod_systemd.patch
 # Features/functional changes
 Patch21: httpd-2.4.6-full-release.patch
 Patch23: httpd-2.4.4-export.patch
@@ -94,20 +100,24 @@ Patch25: httpd-2.4.1-selinux.patch
 Patch26: httpd-2.4.4-r1337344+.patch
 Patch27: httpd-2.4.2-icons.patch
 Patch28: httpd-2.4.6-r1332643+.patch
-Patch29: httpd-2.4.3-mod_systemd.patch
 Patch30: httpd-2.4.4-cachehardmax.patch
 Patch31: httpd-2.4.6-sslmultiproxy.patch
+Patch32: httpd-2.4.3-sslsninotreq.patch
 # Bug fixes
 Patch55: httpd-2.4.4-malformed-host.patch
 Patch56: httpd-2.4.4-mod_unique_id.patch
 Patch59: httpd-2.4.6-r1556473.patch
+Patch62: httpd-2.4.6-apachectl-status.patch
 Patch63: httpd-2.4.6-ab-overflow.patch
 Patch64: httpd-2.4.6-sigint.patch
-# Security fixed
-Patch200: httpd-2.4.12-CVE-2015-0228.patch
-Patch201: httpd-2.4.12-CVE-2015-0253.patch
-Patch202: httpd-2.4.12-CVE-2015-3183.patch
-Patch203: httpd-2.4.12-CVE-2015-3185.patch
+Patch65: httpd-2.4.17-autoindex-revert.patch
+Patch66: httpd-2.4.18-r1684636.patch
+Patch67: httpd-2.4.18-documentroot.patch
+Patch68: httpd-2.4.6-ap-ipv6.patch
+Patch69: httpd-2.4.6-apachectl-httpd-env.patch
+Patch70: httpd-2.4.6-bomb.patch
+Patch71: httpd-2.4.18-apachectl-httpd-env2.patch
+Patch72: httpd-2.4.18-r1738229.patch
 License: ASL 2.0
 Group: System Environment/Daemons
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root
@@ -118,6 +128,7 @@ BuildRequires: apr-devel >= 1.4.0, apr-util-devel >= 1.2.0
 %else
 BuildRequires: %{?scl:%scl_prefix}apr-devel >= 1.4.0, %{?scl:%scl_prefix}apr-util-devel >= 1.2.0
 %endif
+BuildRequires: %{?scl:%scl_prefix}libnghttp2-devel
 BuildRequires: pcre-devel >= 5.0
 Requires: /etc/mime.types, system-logos >= 7.92.1-1
 Provides: %{?scl:%scl_prefix}mod_dav = %{version}-%{release}, %{?scl:%scl_prefix}httpd-suexec = %{version}-%{release}
@@ -131,6 +142,10 @@ Requires(postun): systemd-units
 Requires(post): systemd-units
 %else
 Requires(post): chkconfig
+%endif
+%if 0%{?rhel} < 7
+Requires(post): policycoreutils
+Requires(post): policycoreutils-python
 %endif
 %{?scl:Requires:%scl_runtime}
 
@@ -148,6 +163,10 @@ Requires: %{?scl:%scl_prefix}apr-devel, %{?scl:%scl_prefix}apr-util-devel
 %endif
 Requires: pkgconfig
 Requires: %{?scl:%scl_prefix}httpd = %{version}-%{release}
+%if 0%{?rhel} < 7
+Requires(post): policycoreutils
+Requires(post): policycoreutils-python
+%endif
 
 %description devel
 The httpd-devel package contains the APXS binary and other files
@@ -162,6 +181,10 @@ to install this package.
 Group: Documentation
 Summary: Documentation for the Apache HTTP server
 Requires: %{?scl:%scl_prefix}httpd = %{version}-%{release}
+%if 0%{?rhel} < 7
+Requires(post): policycoreutils
+Requires(post): policycoreutils-python
+%endif
 BuildArch: noarch
 
 %description manual
@@ -172,6 +195,8 @@ also be found at http://httpd.apache.org/docs/2.2/.
 %package tools
 Group: System Environment/Daemons
 Summary: Tools for use with the Apache HTTP Server
+Requires(post):    policycoreutils
+Requires(post):    policycoreutils-python
 
 %description tools
 The httpd-tools package contains tools which can be used with 
@@ -185,6 +210,10 @@ BuildRequires: openssl-devel
 Requires(post): openssl, /bin/cat
 Requires(pre): %{?scl:%scl_prefix}httpd
 Requires: %{?scl:%scl_prefix}httpd = 0:%{version}-%{release}, %{?scl:%scl_prefix}httpd-mmn = %{mmnisa}
+%if 0%{?rhel} < 7
+Requires(post): policycoreutils
+Requires(post): policycoreutils-python
+%endif
 
 %description -n %{?scl:%scl_prefix}mod_ssl
 The mod_ssl module provides strong cryptography for the Apache Web
@@ -196,6 +225,10 @@ Group: System Environment/Daemons
 Summary: HTML and XML content filters for the Apache HTTP Server
 Requires: %{?scl:%scl_prefix}httpd = 0:%{version}-%{release}, %{?scl:%scl_prefix}httpd-mmn = %{mmnisa}
 BuildRequires: libxml2-devel
+%if 0%{?rhel} < 7
+Requires(post): policycoreutils
+Requires(post): policycoreutils-python
+%endif
 Epoch: 1
 
 %description -n %{?scl:%scl_prefix}mod_proxy_html
@@ -211,6 +244,10 @@ Requires: apr-util-ldap
 %else
 Requires: %{?scl:%scl_prefix}apr-util-ldap
 %endif
+%if 0%{?rhel} < 7
+Requires(post): policycoreutils
+Requires(post): policycoreutils-python
+%endif
 
 %description -n %{?scl:%scl_prefix}mod_ldap
 The mod_ldap and mod_authnz_ldap modules add support for LDAP
@@ -220,6 +257,10 @@ authentication to the Apache HTTP Server.
 Group: System Environment/Daemons
 Summary: Session interface for the Apache HTTP Server
 Requires: %{?scl:%scl_prefix}httpd = 0:%{version}-%{release}, %{?scl:%scl_prefix}httpd-mmn = %{mmnisa}
+%if 0%{?rhel} < 7
+Requires(post): policycoreutils
+Requires(post): policycoreutils-python
+%endif
 
 %description -n %{?scl:%scl_prefix}mod_session
 The mod_session module and associated backends provide an abstract
@@ -231,13 +272,17 @@ export LD_LIBRARY_PATH=%{_libdir}:$LD_LIBRARY_PATH
 %endif
 %setup -q %{?scl:-n %{pkg_name}-%{version}}
 %patch1 -p1 -b .apctl
-%if 0%{?scl:0}
 %patch2 -p1 -b .apxs
-%endif
 %patch3 -p1 -b .deplibs
 %patch5 -p1 -b .layout
+%if %{use_systemd}
 %patch6 -p1 -b .apctlsystemd
 %patch7 -p1 -b .skiplist
+%patch8 -p1 -b .systemd
+%else
+%patch62 -p1 -b .apachectlstatus
+%patch71 -p1 -b .envhttpd2
+%endif
 
 %patch21 -p1 -b .fullrelease
 %patch23 -p1 -b .export
@@ -246,20 +291,22 @@ export LD_LIBRARY_PATH=%{_libdir}:$LD_LIBRARY_PATH
 %patch26 -p1 -b .r1337344+
 %patch27 -p1 -b .icons
 %patch28 -p1 -b .r1332643+
-%patch29 -p1 -b .systemd
 %patch30 -p1 -b .cachehardmax
 %patch31 -p1 -b .sslmultiproxy
+%patch32 -p1 -b .sslsninotreq
 
 %patch55 -p1 -b .malformedhost
 %patch56 -p1 -b .uniqueid
 %patch59 -p1 -b .r1556473
 %patch63 -p1 -b .aboverflow
 %patch64 -p1 -b .sigint
-
-%patch200 -p1 -b .cve0228
-%patch201 -p1 -b .cve0253
-%patch202 -p1 -b .cve3183
-%patch203 -p1 -b .cve3185
+%patch65 -p1 -b .autoindexrevert
+%patch66 -p1 -b .r1684636
+%patch67 -p1 -b .documentroot
+%patch68 -p1 -b .ipv6
+%patch69 -p1 -b .envhttpd
+%patch70 -p1 -b .bomb
+%patch72 -p1 -b .r1738229
 
 # Patch in the vendor string and the release string
 sed -i '/^#define PLATFORM/s/Unix/%{vstring}/' os/unix/os.h
@@ -312,11 +359,17 @@ export LYNX_PATH=/usr/bin/links
         --enable-mpms-shared=all \
         --with-apr=%{apr_prefix} --with-apr-util=%{apr_prefix} \
 	--enable-suexec --with-suexec \
+%if 0%{?rhel} >= 7
         --enable-suexec-capabilities \
+%endif
 	--with-suexec-caller=%{suexec_caller} \
 	--with-suexec-docroot=%{docroot} \
+%if 0%{?rhel} >= 7
 	--without-suexec-logfile \
         --with-suexec-syslog \
+%else
+	--with-suexec-logfile=%{_root_localstatedir}/log/httpd/suexec.log \
+%endif
 	--with-suexec-bin=%{_sbindir}/suexec \
 	--with-suexec-uidmin=500 --with-suexec-gidmin=100 \
         --enable-pie \
@@ -404,7 +457,10 @@ install -m 644 $RPM_SOURCE_DIR/README.confd \
     $RPM_BUILD_ROOT%{_sysconfdir}/httpd/conf.d/README
 for f in 00-base.conf 00-mpm.conf 00-lua.conf 01-cgi.conf 00-dav.conf \
          00-proxy.conf 00-ssl.conf 01-ldap.conf 00-proxyhtml.conf \
-         01-ldap.conf 01-session.conf 00-systemd.conf 00-optional.conf; do
+%if %{use_systemd}
+         00-systemd.conf \
+%endif
+         01-ldap.conf 01-session.conf 00-optional.conf; do
   install -m 644 -p $RPM_SOURCE_DIR/$f \
         $RPM_BUILD_ROOT%{_sysconfdir}/httpd/conf.modules.d/$f
 done
@@ -418,6 +474,8 @@ for f in welcome.conf ssl.conf manual.conf userdir.conf; do
 		$RPM_BUILD_ROOT%{_sysconfdir}/httpd/conf.d/$f
 	sed -i 's|\$datadir|%{_datadir}|' \
 		$RPM_BUILD_ROOT%{_sysconfdir}/httpd/conf.d/$f
+  touch -r $RPM_SOURCE_DIR/$f \
+        $RPM_BUILD_ROOT%{_sysconfdir}/httpd/conf.d/$f
 done
 
 # Split-out extra config shipped as default in conf.d:
@@ -446,6 +504,11 @@ for s in httpd htcacheclean; do
       $RPM_BUILD_ROOT%{_sysconfdir}/sysconfig/${s}
 done
 
+%if 0%{?rhel} < 7
+sed -i 's|LANG|HTTPD_LANG|' \
+	$RPM_BUILD_ROOT%{_sysconfdir}/sysconfig/httpd
+%endif
+
 # tmpfiles.d configuration
 %if 0%{?rhel} >= 7 && ! %{?scl:1}0
 mkdir $RPM_BUILD_ROOT/etc/tmpfiles.d 
@@ -467,7 +530,7 @@ mkdir -p $RPM_BUILD_ROOT%{_localstatedir}/cache/httpd \
 # Make the MMN accessible to module packages
 echo %{mmnisa} > $RPM_BUILD_ROOT%{_includedir}/httpd/.mmn
 
-# When building as SCL, use different pref%{?scl:Requires:%scl_runtime}ix for macros
+# When building as SCL, use different prefix for macros
 %if %{?scl}0
 mkdir -p $RPM_BUILD_ROOT%{_root_sysconfdir}/rpm/
 cat > $RPM_BUILD_ROOT%{_root_sysconfdir}/rpm/macros.httpd24 <<EOF
@@ -586,7 +649,13 @@ rm -rf $RPM_BUILD_ROOT/%{_sysconfdir}/httpd/conf/{original,extra}
 # Make suexec a+rw so it can be stripped.  %%files lists real permissions
 chmod 755 $RPM_BUILD_ROOT%{_sbindir}/suexec
 
+%if %{use_systemd}
 install -pm 0755 %{SOURCE29} %{buildroot}%{_sbindir}/httpd-scl-wrapper
+%endif
+
+# replace $sbindir in apachectl with right path
+sed -i 's|\$sbindir|%{_sbindir}|' \
+    %{buildroot}%{_sbindir}/apachectl
 
 %pre
 # Add the "apache" user
@@ -594,18 +663,29 @@ install -pm 0755 %{SOURCE29} %{buildroot}%{_sbindir}/httpd-scl-wrapper
 	-s /sbin/nologin -r -d %{contentdir} apache 2> /dev/null || :
 
 %post
+%if 0%{?rhel} < 7
+restorecon -R %{_scl_root} >/dev/null 2>&1 || :
+%endif
+
 %if %{use_systemd}
 %systemd_post %{httpd_service} %{htcacheclean_service}
+
+semanage fcontext -a -t httpd_exec_t "%{_root_sbindir}/httpd-scl-wrapper"
+restorecon -R %{_scl_root} >/dev/null 2>&1 || :
 %else
 # Register the httpd service
 /sbin/chkconfig --add %{?scl:%scl_prefix}httpd
 /sbin/chkconfig --add %{?scl:%scl_prefix}htcacheclean
+
+semanage fcontext -a -e /etc/rc.d/init.d/httpd /etc/rc.d/init.d/httpd24-httpd >/dev/null 2>&1 || :
+restorecon -R /etc/rc.d/init.d/httpd24-httpd >/dev/null 2>&1 || :
+
+semanage fcontext -a -e /etc/rc.d/init.d/htcacheclean /etc/rc.d/init.d/httpd24-htcacheclean >/dev/null 2>&1 || :
+restorecon -R /etc/rc.d/init.d/httpd24-htcacheclean >/dev/null 2>&1 || :
 %endif
+
 semanage fcontext -a -e /var/log/httpd %{httpd_logdir} >/dev/null 2>&1 || :
 restorecon -R %{httpd_logdir} >/dev/null 2>&1 || :
-
-semanage fcontext -a -t httpd_exec_t "%{_root_sbindir}/httpd-scl-wrapper"
-restorecon -R %{_scl_root} >/dev/null 2>&1 || :
 
 %preun
 %if %{use_systemd}
@@ -630,12 +710,20 @@ fi
 %if %{use_systemd}
 test -f %{_sysconfdir}/sysconfig/httpd-disable-posttrans || \
   /bin/systemctl try-restart %{httpd_service} %{htcacheclean_service} >/dev/null 2>&1 || :
+%else
+test -f %{_sysconfdir}/sysconfig/httpd-disable-posttrans || \
+  /sbin/service %{?scl:%scl_prefix}httpd condrestart >/dev/null 2>&1 || :
+test -f %{_sysconfdir}/sysconfig/httpd-disable-posttrans || \
+  /sbin/service %{?scl:%scl_prefix}htcacheclean condrestart >/dev/null 2>&1 || :
 %endif
 
 %define sslcert %{_root_sysconfdir}/pki/tls/certs/localhost.crt
 %define sslkey %{_root_sysconfdir}/pki/tls/private/localhost.key
 
 %post -n %{?scl:%scl_prefix}mod_ssl
+%if 0%{?rhel} < 7
+restorecon -R %{_scl_root} >/dev/null 2>&1 || :
+%endif
 umask 077
 
 if [ -f %{sslkey} -o -f %{sslcert} ]; then
@@ -661,12 +749,40 @@ ${FQDN}
 root@${FQDN}
 EOF
 
+%if 0%{?rhel} < 7
+%post tools
+restorecon -R %{_scl_root} >/dev/null 2>&1 || :
+
+%post manual
+restorecon -R %{_scl_root} >/dev/null 2>&1 || :
+
+%post -n %{?scl:%scl_prefix}mod_proxy_html
+restorecon -R %{_scl_root} >/dev/null 2>&1 || :
+
+%post -n %{?scl:%scl_prefix}mod_ldap
+restorecon -R %{_scl_root} >/dev/null 2>&1 || :
+
+%post -n %{?scl:%scl_prefix}mod_session
+restorecon -R %{_scl_root} >/dev/null 2>&1 || :
+
+%post devel
+restorecon -R %{_scl_root} >/dev/null 2>&1 || :
+%endif
+
 %check
 # Check the built modules are all PIC
 if readelf -d $RPM_BUILD_ROOT%{_libdir}/httpd/modules/*.so | grep TEXTREL; then
    : modules contain non-relocatable code
    exit 1
 fi
+# Ensure every mod_* that's built is loaded.
+for f in $RPM_BUILD_ROOT%{_libdir}/httpd/modules/*.so; do
+  m=${f##*/}
+  if ! grep -q $m $RPM_BUILD_ROOT%{_sysconfdir}/httpd/conf.modules.d/*.conf; then
+    echo ERROR: Module $m not configured.  Disable it, or load it.
+    exit 1
+  fi
+done
 
 %clean
 rm -rf $RPM_BUILD_ROOT
@@ -711,12 +827,21 @@ rm -rf $RPM_BUILD_ROOT
 %{_root_libexecdir}/initscripts/legacy-actions/%{?scl:%scl_prefix}httpd/*
 %endif
 
+%if %{use_systemd}
+%dir %{_root_libexecdir}/initscripts/legacy-actions/%{?scl:%scl_prefix}httpd
+%{_root_libexecdir}/initscripts/legacy-actions/%{?scl:%scl_prefix}httpd/*
+%endif
+
 %{_sbindir}/ht*
 %{_sbindir}/fcgistarter
 %{_sbindir}/apachectl
 %{_sbindir}/rotatelogs
+%if 0%{?rhel} >= 7
 %{_sbindir}/httpd-scl-wrapper
 %caps(cap_setuid,cap_setgid+pe) %attr(510,root,%{suexec_caller}) %{_sbindir}/suexec
+%else
+%attr(4510,root,%{suexec_caller}) %{_sbindir}/suexec
+%endif
 
 %dir %{_libdir}/httpd
 %dir %{_libdir}/httpd/modules
@@ -812,6 +937,54 @@ rm -rf $RPM_BUILD_ROOT
 %endif
 
 %changelog
+* Fri Apr 15 2016 Joe Orton <jorton@redhat.com> - 2.4.18-10
+- load more built modules (including mod_http2) by default (#1302653)
+- lower log-level for mod_ssl NPN debugging (#1302653)
+
+* Thu Apr 14 2016 Joe Orton <jorton@redhat.com> - 2.4.18-9
+- mod_ssl: restore NPN behaviour with no Protocol configured (#1302653)
+
+* Tue Apr 12 2016 Joe Orton <jorton@redhat.com> - 2.4.18-8
+- mod_ssl: allow protocol upgrades via NPN (#1302653)
+
+* Fri Apr  8 2016 Joe Orton <jorton@redhat.com> - 2.4.18-7
+- mod_lua: use anonymous shm segment (#1225116)
+- revert 'apachectl graceful' to start httpd if stopped (#1221702)
+
+* Wed Apr  6 2016 Joe Orton <jorton@redhat.com> - 2.4.18-6
+- fix apxs generated Makefile path to build directory (#1319837)
+- use redirects for lang-specific /manual/ URLs (#1324406)
+
+* Wed Mar 30 2016 Jan Kaluza <jkaluza@redhat.com> - 2.4.18-5
+- apachectl: use httpd from the SCL in apachectl (#1319780)
+- apachectl: ignore HTTPD variable also on RHEL6 (#1221681)
+
+* Tue Feb 23 2016 Jan Kaluza <jkaluza@redhat.com> - 2.4.18-4
+- apxs: fix querying installbuilddir
+
+* Thu Feb 11 2016 Jan Kaluza <jkaluza@redhat.com> - 2.4.18-3
+- correct the AliasMatch in manual.conf (#1282481)
+
+* Wed Feb 10 2016 Jan Kaluza <jkaluza@redhat.com> - 2.4.18-2
+- use HTTPD_LANG in sysconfig file on RHEL6 (#1222055)
+- ignore HTTPD sysconfig variable on RHEL6 (#1204075)
+- call restorecon on /etc/rc.d/init.d/htcacheclean after install (#1222494)
+
+* Wed Feb 03 2016 Jan Kaluza <jkaluza@redhat.com> - 2.4.18-1
+- update to version 2.4.18
+- add support for http/2
+- mod_auth_digest: use anonymous shared memory (#1225116)
+- core: improve error message for inaccessible DocumentRoot (#1207093)
+- ab: try all addresses instead of failing on first one when not available (#1209552)
+- apachectl: ignore HTTPD variable from sysconfig (#1221681)
+- apachectl: fix "graceful" documentation (#1221702)
+- apachectl: fix "graceful" behaviour when httpd is not running (#1221650)
+- do not display "bomb" icon for files ending with "core" (#1196553)
+- mod_proxy_wstunnel: load this module by default (#1253396)
+
+* Tue Dec 15 2015 Jan Kaluza <jkaluza@redhat.com> - 2.4.12-8
+- Add httpd-2.4.3-sslsninotreq.patch as we did in rhscl-2.0 (#1249800)
+
 * Tue Aug 11 2015 Jan Kaluza <jkaluza@redhat.com> - 2.4.12-7
 - core: fix chunk header parsing defect (CVE-2015-3183)
 - core: replace of ap_some_auth_required with ap_some_authn_required

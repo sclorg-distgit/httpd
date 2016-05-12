@@ -1,9 +1,8 @@
-
-Ugly hack to enable mod_ssl and mod_nss to "share" hooks.
-
---- httpd-2.4.6/modules/ssl/mod_ssl.c.sslmultiproxy
-+++ httpd-2.4.6/modules/ssl/mod_ssl.c
-@@ -369,6 +369,9 @@ static SSLConnRec *ssl_init_connection_c
+diff --git a/modules/ssl/mod_ssl.c b/modules/ssl/mod_ssl.c
+index 0d7c906..be2ee9f 100644
+--- a/modules/ssl/mod_ssl.c
++++ b/modules/ssl/mod_ssl.c
+@@ -395,6 +395,9 @@ static SSLConnRec *ssl_init_connection_ctx(conn_rec *c)
      return sslconn;
  }
  
@@ -13,7 +12,7 @@ Ugly hack to enable mod_ssl and mod_nss to "share" hooks.
  int ssl_proxy_enable(conn_rec *c)
  {
      SSLSrvConfigRec *sc;
-@@ -377,6 +380,12 @@ int ssl_proxy_enable(conn_rec *c)
+@@ -403,6 +406,12 @@ int ssl_proxy_enable(conn_rec *c)
      sc = mySrvConfig(sslconn->server);
  
      if (!sc->proxy_enabled) {
@@ -26,7 +25,7 @@ Ugly hack to enable mod_ssl and mod_nss to "share" hooks.
          ap_log_cerror(APLOG_MARK, APLOG_ERR, 0, c, APLOGNO(01961)
                        "SSL Proxy requested for %s but not enabled "
                        "[Hint: SSLProxyEngine]", sc->vhost_id);
-@@ -396,6 +405,10 @@ int ssl_engine_disable(conn_rec *c)
+@@ -422,6 +431,10 @@ int ssl_engine_disable(conn_rec *c)
  
      SSLConnRec *sslconn = myConnConfig(c);
  
@@ -37,7 +36,7 @@ Ugly hack to enable mod_ssl and mod_nss to "share" hooks.
      if (sslconn) {
          sc = mySrvConfig(sslconn->server);
      }
-@@ -612,6 +625,9 @@ static void ssl_register_hooks(apr_pool_
+@@ -652,6 +665,9 @@ static void ssl_register_hooks(apr_pool_t *p)
      ap_hook_post_read_request(ssl_hook_ReadReq, pre_prr,NULL, APR_HOOK_MIDDLE);
  
      ssl_var_register(p);
@@ -47,18 +46,25 @@ Ugly hack to enable mod_ssl and mod_nss to "share" hooks.
  
      APR_REGISTER_OPTIONAL_FN(ssl_proxy_enable);
      APR_REGISTER_OPTIONAL_FN(ssl_engine_disable);
---- httpd-2.4.6/modules/ssl/ssl_engine_vars.c.sslmultiproxy
-+++ httpd-2.4.6/modules/ssl/ssl_engine_vars.c
-@@ -53,10 +53,15 @@ static void  ssl_var_lookup_ssl_cipher_b
+diff --git a/modules/ssl/ssl_engine_vars.c b/modules/ssl/ssl_engine_vars.c
+index a6b0d0d..5a415b9 100644
+--- a/modules/ssl/ssl_engine_vars.c
++++ b/modules/ssl/ssl_engine_vars.c
+@@ -55,6 +55,10 @@ static void  ssl_var_lookup_ssl_cipher_bits(SSL *ssl, int *usekeysize, int *algk
  static char *ssl_var_lookup_ssl_version(apr_pool_t *p, char *var);
  static char *ssl_var_lookup_ssl_compress_meth(SSL *ssl);
  
 +static APR_OPTIONAL_FN_TYPE(ssl_is_https) *othermod_is_https;
 +static APR_OPTIONAL_FN_TYPE(ssl_var_lookup) *othermod_var_lookup;
 +
- static int ssl_is_https(conn_rec *c)
++
+ static SSLConnRec *ssl_get_effective_config(conn_rec *c)
  {
      SSLConnRec *sslconn = myConnConfig(c);
+@@ -68,7 +72,9 @@ static SSLConnRec *ssl_get_effective_config(conn_rec *c)
+ static int ssl_is_https(conn_rec *c)
+ {
+     SSLConnRec *sslconn = ssl_get_effective_config(c);
 -    return sslconn && sslconn->ssl;
 +    
 +    return (sslconn && sslconn->ssl)
@@ -66,7 +72,7 @@ Ugly hack to enable mod_ssl and mod_nss to "share" hooks.
  }
  
  static const char var_interface[] = "mod_ssl/" AP_SERVER_BASEREVISION;
-@@ -106,6 +111,9 @@ void ssl_var_register(apr_pool_t *p)
+@@ -137,6 +143,9 @@ void ssl_var_register(apr_pool_t *p)
  {
      char *cp, *cp2;
  
@@ -76,10 +82,10 @@ Ugly hack to enable mod_ssl and mod_nss to "share" hooks.
      APR_REGISTER_OPTIONAL_FN(ssl_is_https);
      APR_REGISTER_OPTIONAL_FN(ssl_var_lookup);
      APR_REGISTER_OPTIONAL_FN(ssl_ext_list);
-@@ -241,6 +249,15 @@ char *ssl_var_lookup(apr_pool_t *p, serv
+@@ -272,6 +281,15 @@ char *ssl_var_lookup(apr_pool_t *p, server_rec *s, conn_rec *c, request_rec *r,
       */
      if (result == NULL && c != NULL) {
-         SSLConnRec *sslconn = myConnConfig(c);
+         SSLConnRec *sslconn = ssl_get_effective_config(c);
 +
 +        if (strlen(var) > 4 && strcEQn(var, "SSL_", 4)
 +            && (!sslconn || !sslconn->ssl) && othermod_var_lookup) {
@@ -91,4 +97,4 @@ Ugly hack to enable mod_ssl and mod_nss to "share" hooks.
 +
          if (strlen(var) > 4 && strcEQn(var, "SSL_", 4)
              && sslconn && sslconn->ssl)
-             result = ssl_var_lookup_ssl(p, c, r, var+4);
+             result = ssl_var_lookup_ssl(p, sslconn, r, var+4);

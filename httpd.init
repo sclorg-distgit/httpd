@@ -11,7 +11,7 @@
 # pidfile: $localstatedir/run/httpd/httpd.pid
 #
 ### BEGIN INIT INFO
-# Provides: httpd
+# Provides: httpd24-httpd
 # Required-Start: $local_fs $remote_fs $network $named
 # Required-Stop: $local_fs $remote_fs $network
 # Should-Start: distcache
@@ -34,18 +34,24 @@ HTTPD_LANG=${HTTPD_LANG-"C"}
 # mod_ssl needs a pass-phrase from the user.
 INITLOG_ARGS=""
 
-# Set HTTPD=$sbindir/httpd.worker in /etc/sysconfig/httpd to use a server
-# with the thread-based "worker" MPM; BE WARNED that some modules may not
-# work correctly with a thread-based MPM; notably PHP will refuse to start.
-
 # Path to the apachectl script, server binary, and short-form for messages.
 apachectl=$sbindir/apachectl
-httpd=${HTTPD-$sbindir/httpd}
+httpd=$sbindir/httpd
 prog=httpd
 pidfile=${PIDFILE-$localstatedir/run/httpd/httpd.pid}
 lockfile=${LOCKFILE-$localstatedir/lock/subsys/httpd}
 RETVAL=0
 STOP_TIMEOUT=${STOP_TIMEOUT-10}
+
+# We have to re-enable SCL environment, because /sbin/service
+# clears almost all environment variables.
+# Since X_SCLS is cleared as well, we lose information about other
+# collections enabled.
+. /opt/rh/httpd24/service-environment
+for sclname in $HTTPD24_HTTPD_SCLS_ENABLED ; do
+    . /opt/rh/$sclname/enable
+    export X_SCLS="$X_SCLS $sclname"
+done
 
 # The semantics of these two functions differ from the way apachectl does
 # things -- attempting to start while running is a failure, and shutdown
@@ -97,7 +103,9 @@ case "$1" in
 	stop
 	;;
   status)
-        status -p ${pidfile} $httpd
+        # `status' checks lockfile only in /var/lock/subsys by default.
+        # To workaround that, move outside that directory first.
+        status -p ${pidfile} -l ../../../${lockfile} $httpd
 	RETVAL=$?
 	;;
   restart)
@@ -105,7 +113,9 @@ case "$1" in
 	start
 	;;
   condrestart|try-restart)
-	if status -p ${pidfile} $httpd >&/dev/null; then
+    # `status' checks lockfile only in /var/lock/subsys by default.
+    # To workaround that, move outside that directory first.
+	if status -p ${pidfile} -l ../../../${lockfile} $httpd >&/dev/null; then
 		stop
 		start
 	fi

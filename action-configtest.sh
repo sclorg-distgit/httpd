@@ -1,2 +1,2 @@
 #!/bin/sh
-exec $sbindir/apachectl configtest "$@"
+exec $sbindir/apachectl configtest

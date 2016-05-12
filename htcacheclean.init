@@ -65,7 +65,9 @@ case "$1" in
 	stop
 	;;
   status)
-        status $binary
+        # `status' checks lockfile only in /var/lock/subsys by default.
+        # To workaround that, move outside that directory first.
+        status -l ../../../${lockfile} $binary
 	RETVAL=$?
 	;;
   restart)
@@ -73,7 +75,9 @@ case "$1" in
 	start
 	;;
   condrestart|try-restart)
-	if status $binary >&/dev/null; then
+	# `status' checks lockfile only in /var/lock/subsys by default.
+	# To workaround that, move outside that directory first.
+	if status -l ../../../${lockfile} $binary >&/dev/null; then
 		stop
 		start
 	fi
