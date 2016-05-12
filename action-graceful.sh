@@ -1,2 +1,2 @@
 #!/bin/sh
-exec $sbindir/apachectl -k graceful "$@"
+exec $sbindir/apachectl graceful
