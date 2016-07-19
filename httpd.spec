@@ -49,7 +49,7 @@
 Summary: Apache HTTP Server
 Name: %{?scl:%scl_prefix}httpd
 Version: 2.4.18
-Release: 10%{?dist}
+Release: 11%{?dist}
 URL: http://httpd.apache.org/
 Source0: http://www.apache.org/dist/httpd/httpd-%{version}.tar.bz2
 Source1: index.html
@@ -118,6 +118,9 @@ Patch69: httpd-2.4.6-apachectl-httpd-env.patch
 Patch70: httpd-2.4.6-bomb.patch
 Patch71: httpd-2.4.18-apachectl-httpd-env2.patch
 Patch72: httpd-2.4.18-r1738229.patch
+# Security fixes
+Patch100: httpd-2.4.18-CVE-2016-5387.patch
+Patch101: httpd-2.4.18-CVE-2016-4979.patch
 License: ASL 2.0
 Group: System Environment/Daemons
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root
@@ -307,6 +310,9 @@ export LD_LIBRARY_PATH=%{_libdir}:$LD_LIBRARY_PATH
 %patch69 -p1 -b .envhttpd
 %patch70 -p1 -b .bomb
 %patch72 -p1 -b .r1738229
+
+%patch100 -p1 -b .cve5387
+%patch101 -p1 -b .cve4979
 
 # Patch in the vendor string and the release string
 sed -i '/^#define PLATFORM/s/Unix/%{vstring}/' os/unix/os.h
@@ -937,6 +943,10 @@ rm -rf $RPM_BUILD_ROOT
 %endif
 
 %changelog
+* Wed Jul 13 2016 Joe Orton <jorton@redhat.com> - 2.4.18-11
+- add security fix for CVE-2016-5387
+- mod_ssl: add security fix for CVE-2016-4979
+
 * Fri Apr 15 2016 Joe Orton <jorton@redhat.com> - 2.4.18-10
 - load more built modules (including mod_http2) by default (#1302653)
 - lower log-level for mod_ssl NPN debugging (#1302653)
