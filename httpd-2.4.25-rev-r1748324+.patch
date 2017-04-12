@@ -1,0 +1,58 @@
+
+Reverses two changes to mod_proxy_fcgi.c to get back to pre-2.4.23 behaviour:
+
+https://svn.apache.org/r1748324 
+https://svn.apache.org/r1755077 
+
+diff -uap httpd-2.4.25/modules/proxy/mod_proxy_fcgi.c.rev-r1748324+ httpd-2.4.25/modules/proxy/mod_proxy_fcgi.c
+--- httpd-2.4.25/modules/proxy/mod_proxy_fcgi.c.rev-r1748324+
++++ httpd-2.4.25/modules/proxy/mod_proxy_fcgi.c
+@@ -253,6 +253,7 @@
+     apr_status_t rv;
+     apr_size_t avail_len, len, required_len;
+     int next_elem, starting_elem;
++    char *proxyfilename = r->filename;
+     fcgi_req_config_t *rconf = ap_get_module_config(r->request_config, &proxy_fcgi_module);
+ 
+     if (rconf) { 
+@@ -261,33 +262,18 @@
+        }
+     }
+ 
+-    /* Strip proxy: prefixes */
+-    if (r->filename) {
+-        char *newfname = NULL;
+-
+-        if (!strncmp(r->filename, "proxy:balancer://", 17)) {
+-            newfname = apr_pstrdup(r->pool, r->filename+17);
+-        }
+-        else if (!strncmp(r->filename, "proxy:fcgi://", 13)) {
+-            newfname = apr_pstrdup(r->pool, r->filename+13);
+-        }
+-        /* Query string in environment only */
+-        if (newfname && r->args && *r->args) { 
+-            char *qs = strrchr(newfname, '?');
+-            if (qs && !strcmp(qs+1, r->args)) { 
+-                *qs = '\0';
+-            }
+-        }
+-
+-        if (newfname) {
+-            newfname = ap_strchr(newfname, '/');
+-            r->filename = newfname;
+-        }
++    /* Strip balancer prefix */
++    if (r->filename && !strncmp(r->filename, "proxy:balancer://", 17)) { 
++        char *newfname = apr_pstrdup(r->pool, r->filename+17);
++        newfname = ap_strchr(newfname, '/');
++        r->filename = newfname;
+     }
+ 
+     ap_add_common_vars(r);
+     ap_add_cgi_vars(r);
+  
++    r->filename = proxyfilename;
++
+     /* XXX are there any FastCGI specific env vars we need to send? */
+ 
+     /* XXX mod_cgi/mod_cgid use ap_create_environment here, which fills in
