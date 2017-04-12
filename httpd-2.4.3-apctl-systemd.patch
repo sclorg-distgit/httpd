@@ -1,4 +1,8 @@
 
+Make apachectl run via systemctl.
+
+Note: "apachectl graceful" is documented to start httpd if not running.
+
 Upstream-Status: vendor specific patch
 
 --- httpd-2.4.18/support/apachectl.in.apctlsystemd

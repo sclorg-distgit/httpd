@@ -48,8 +48,8 @@
 
 Summary: Apache HTTP Server
 Name: %{?scl:%scl_prefix}httpd
-Version: 2.4.18
-Release: 11%{?dist}
+Version: 2.4.25
+Release: 8%{?dist}
 URL: http://httpd.apache.org/
 Source0: http://www.apache.org/dist/httpd/httpd-%{version}.tar.bz2
 Source1: index.html
@@ -86,13 +86,14 @@ Source41: htcacheclean.sysconf
 Source42: htcacheclean.init
 # build/scripts patches
 Patch1: httpd-2.4.1-apctl.patch
-Patch2: httpd-2.4.18-apxs.patch
+Patch2: httpd-2.4.25-apxs.patch
 Patch3: httpd-2.4.1-deplibs.patch
 Patch5: httpd-2.4.3-layout.patch
 Patch6: httpd-2.4.3-apctl-systemd.patch
 Patch7: httpd-2.4.12-skiplist.patch
-Patch8: httpd-2.4.3-mod_systemd.patch
+Patch8: httpd-2.4.10-detect-systemd.patch
 # Features/functional changes
+Patch20: httpd-2.4.10-mod_systemd.patch
 Patch21: httpd-2.4.6-full-release.patch
 Patch23: httpd-2.4.4-export.patch
 Patch24: httpd-2.4.1-corelimit.patch
@@ -104,7 +105,6 @@ Patch30: httpd-2.4.4-cachehardmax.patch
 Patch31: httpd-2.4.6-sslmultiproxy.patch
 Patch32: httpd-2.4.3-sslsninotreq.patch
 # Bug fixes
-Patch55: httpd-2.4.4-malformed-host.patch
 Patch56: httpd-2.4.4-mod_unique_id.patch
 Patch59: httpd-2.4.6-r1556473.patch
 Patch62: httpd-2.4.6-apachectl-status.patch
@@ -112,15 +112,17 @@ Patch63: httpd-2.4.6-ab-overflow.patch
 Patch64: httpd-2.4.6-sigint.patch
 Patch65: httpd-2.4.17-autoindex-revert.patch
 Patch66: httpd-2.4.18-r1684636.patch
-Patch67: httpd-2.4.18-documentroot.patch
 Patch68: httpd-2.4.6-ap-ipv6.patch
 Patch69: httpd-2.4.6-apachectl-httpd-env.patch
 Patch70: httpd-2.4.6-bomb.patch
 Patch71: httpd-2.4.18-apachectl-httpd-env2.patch
 Patch72: httpd-2.4.18-r1738229.patch
+Patch73: httpd-2.4.25-r1778319+.patch
+Patch74: httpd-2.4.25-rev-r1748324+.patch
+Patch75: httpd-2.4.25-r1782332.patch
+
 # Security fixes
-Patch100: httpd-2.4.18-CVE-2016-5387.patch
-Patch101: httpd-2.4.18-CVE-2016-4979.patch
+
 License: ASL 2.0
 Group: System Environment/Daemons
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root
@@ -146,10 +148,8 @@ Requires(post): systemd-units
 %else
 Requires(post): chkconfig
 %endif
-%if 0%{?rhel} < 7
 Requires(post): policycoreutils
 Requires(post): policycoreutils-python
-%endif
 %{?scl:Requires:%scl_runtime}
 
 %description
@@ -281,12 +281,13 @@ export LD_LIBRARY_PATH=%{_libdir}:$LD_LIBRARY_PATH
 %if %{use_systemd}
 %patch6 -p1 -b .apctlsystemd
 %patch7 -p1 -b .skiplist
-%patch8 -p1 -b .systemd
+%patch8 -p1 -b .detect-systemd
 %else
 %patch62 -p1 -b .apachectlstatus
 %patch71 -p1 -b .envhttpd2
 %endif
 
+%patch20 -p1 -b .mod_systemd
 %patch21 -p1 -b .fullrelease
 %patch23 -p1 -b .export
 %patch24 -p1 -b .corelimit
@@ -298,21 +299,19 @@ export LD_LIBRARY_PATH=%{_libdir}:$LD_LIBRARY_PATH
 %patch31 -p1 -b .sslmultiproxy
 %patch32 -p1 -b .sslsninotreq
 
-%patch55 -p1 -b .malformedhost
 %patch56 -p1 -b .uniqueid
 %patch59 -p1 -b .r1556473
 %patch63 -p1 -b .aboverflow
 %patch64 -p1 -b .sigint
 %patch65 -p1 -b .autoindexrevert
 %patch66 -p1 -b .r1684636
-%patch67 -p1 -b .documentroot
 %patch68 -p1 -b .ipv6
 %patch69 -p1 -b .envhttpd
 %patch70 -p1 -b .bomb
 %patch72 -p1 -b .r1738229
-
-%patch100 -p1 -b .cve5387
-%patch101 -p1 -b .cve4979
+%patch73 -p1 -b .r1778319+
+%patch74 -p1 -b .rev-r1748324+
+%patch75 -p1 -b .r1782332
 
 # Patch in the vendor string and the release string
 sed -i '/^#define PLATFORM/s/Unix/%{vstring}/' os/unix/os.h
@@ -604,7 +603,7 @@ mkdir -p $RPM_BUILD_ROOT/%{_root_libexecdir}/initscripts/legacy-actions/%{?scl:%
 for f in graceful configtest; do
 	install -p -m 755 $RPM_SOURCE_DIR/action-${f}.sh \
 			$RPM_BUILD_ROOT/%{_root_libexecdir}/initscripts/legacy-actions/%{?scl:%scl_prefix}httpd/${f}
-	sed -i 's|\$sbindir|%{_sbindir}|' \
+	sed -i 's|\$sbindir|%{_sbindir}|;s|\$sysconfdir|%{_sysconfdir}/sysconfig|' \
 		$RPM_BUILD_ROOT/%{_root_libexecdir}/initscripts/legacy-actions/%{?scl:%scl_prefix}httpd/${f}
 done
 %endif
@@ -676,7 +675,7 @@ restorecon -R %{_scl_root} >/dev/null 2>&1 || :
 %if %{use_systemd}
 %systemd_post %{httpd_service} %{htcacheclean_service}
 
-semanage fcontext -a -t httpd_exec_t "%{_root_sbindir}/httpd-scl-wrapper"
+semanage fcontext -a -t httpd_exec_t "%{_root_sbindir}/httpd-scl-wrapper" >/dev/null 2>&1 || :
 restorecon -R %{_scl_root} >/dev/null 2>&1 || :
 %else
 # Register the httpd service
@@ -739,7 +738,8 @@ fi
 %{_root_bindir}/openssl genrsa -rand /proc/apm:/proc/cpuinfo:/proc/dma:/proc/filesystems:/proc/interrupts:/proc/ioports:/proc/pci:/proc/rtc:/proc/uptime 2048 > %{sslkey} 2> /dev/null
 
 FQDN=`hostname`
-if [ "x${FQDN}" = "x" ]; then
+# A >59 char FQDN means "root@FQDN" exceeds 64-char max length for emailAddress
+if [ "x${FQDN}" = "x" -o ${#FQDN} -gt 59 ]; then
    FQDN=localhost.localdomain
 fi
 
@@ -781,14 +781,27 @@ if readelf -d $RPM_BUILD_ROOT%{_libdir}/httpd/modules/*.so | grep TEXTREL; then
    : modules contain non-relocatable code
    exit 1
 fi
+set +x
+rv=0
 # Ensure every mod_* that's built is loaded.
 for f in $RPM_BUILD_ROOT%{_libdir}/httpd/modules/*.so; do
   m=${f##*/}
   if ! grep -q $m $RPM_BUILD_ROOT%{_sysconfdir}/httpd/conf.modules.d/*.conf; then
     echo ERROR: Module $m not configured.  Disable it, or load it.
-    exit 1
+    rv=1
   fi
 done
+# Ensure every loaded mod_* is actually built
+mods=`grep -h ^LoadModule $RPM_BUILD_ROOT%{_sysconfdir}/httpd/conf.modules.d/*.conf | sed 's,.*modules/,,'`
+for m in $mods; do
+  f=$RPM_BUILD_ROOT%{_libdir}/httpd/modules/${m}
+  if ! test -x $f; then
+    echo ERROR: Module $m is configured but not built.
+    rv=1
+  fi
+done
+set -x
+exit $rv
 
 %clean
 rm -rf $RPM_BUILD_ROOT
@@ -943,6 +956,32 @@ rm -rf $RPM_BUILD_ROOT
 %endif
 
 %changelog
+* Thu Mar  2 2017 Joe Orton <jorton@redhat.com> - 2.4.25-8
+- always require policycoreutils; fail silently if SELinux is disabled (#1376738)
+
+* Thu Mar  2 2017 Joe Orton <jorton@redhat.com> - 2.4.25-7
+- run restorecon during apxs -i (#1093057)
+
+* Thu Mar  2 2017 Joe Orton <jorton@redhat.com> - 2.4.25-6
+- fix legacy systemd actions (#1329639)
+
+* Thu Mar  2 2017 Joe Orton <jorton@redhat.com> - 2.4.25-5
+- mod_proxy_fcgi: revert to pre-2.4.23 SCRIPT_FILENAME mangling (#1414037)
+- mod_proxy: fix regression in per-dir ProxyPass (#1417482)
+
+* Fri Jan 20 2017 Joe Orton <jorton@redhat.com> - 2.4.25-4
+- mod_watchdog: fix pool lifetime issue (#1410883)
+
+* Fri Jan 20 2017 Joe Orton <jorton@redhat.com> - 2.4.25-3
+- update systemd library detection
+
+* Fri Jan 20 2017 Joe Orton <jorton@redhat.com> - 2.4.25-2
+- merge default config changes from Fedora
+- mod_ssl: use "localhost" in the dummy SSL cert if len(FQDN) > 59 chars
+
+* Thu Jan 12 2017 Luboš Uhliarik <luhliari@redhat.com> - 2.4.25-1
+- Resolves: #1404778 - RFE: update httpd24 collection
+
 * Wed Jul 13 2016 Joe Orton <jorton@redhat.com> - 2.4.18-11
 - add security fix for CVE-2016-5387
 - mod_ssl: add security fix for CVE-2016-4979
