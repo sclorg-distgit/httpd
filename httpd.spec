@@ -49,7 +49,7 @@
 Summary: Apache HTTP Server
 Name: %{?scl:%scl_prefix}httpd
 Version: 2.4.25
-Release: 8%{?dist}
+Release: 9%{?dist}.1
 URL: http://httpd.apache.org/
 Source0: http://www.apache.org/dist/httpd/httpd-%{version}.tar.bz2
 Source1: index.html
@@ -91,13 +91,13 @@ Patch3: httpd-2.4.1-deplibs.patch
 Patch5: httpd-2.4.3-layout.patch
 Patch6: httpd-2.4.3-apctl-systemd.patch
 Patch7: httpd-2.4.12-skiplist.patch
-Patch8: httpd-2.4.10-detect-systemd.patch
+Patch8: httpd-2.4.25-detect-systemd.patch
 # Features/functional changes
 Patch20: httpd-2.4.10-mod_systemd.patch
 Patch21: httpd-2.4.6-full-release.patch
 Patch23: httpd-2.4.4-export.patch
 Patch24: httpd-2.4.1-corelimit.patch
-Patch25: httpd-2.4.1-selinux.patch
+Patch25: httpd-2.4.25-selinux.patch
 Patch26: httpd-2.4.4-r1337344+.patch
 Patch27: httpd-2.4.2-icons.patch
 Patch28: httpd-2.4.6-r1332643+.patch
@@ -120,8 +120,15 @@ Patch72: httpd-2.4.18-r1738229.patch
 Patch73: httpd-2.4.25-r1778319+.patch
 Patch74: httpd-2.4.25-rev-r1748324+.patch
 Patch75: httpd-2.4.25-r1782332.patch
+Patch76: httpd-2.4.25-r1787301.patch
 
 # Security fixes
+Patch200: httpd-2.4.25-CVE-2017-3167.patch
+Patch201: httpd-2.4.25-CVE-2017-3169.patch
+Patch202: httpd-2.4.25-CVE-2017-7659.patch
+Patch203: httpd-2.4.25-CVE-2017-7668.patch
+Patch204: httpd-2.4.25-CVE-2017-7679.patch
+Patch205: httpd-2.4.25-CVE-2017-9788.patch
 
 License: ASL 2.0
 Group: System Environment/Daemons
@@ -312,6 +319,14 @@ export LD_LIBRARY_PATH=%{_libdir}:$LD_LIBRARY_PATH
 %patch73 -p1 -b .r1778319+
 %patch74 -p1 -b .rev-r1748324+
 %patch75 -p1 -b .r1782332
+%patch76 -p1 -b .r1787301
+
+%patch200 -p1 -b .cve3167
+%patch201 -p1 -b .cve3169
+%patch202 -p1 -b .cve7659
+%patch203 -p1 -b .cve7668
+%patch204 -p1 -b .cve7679
+%patch205 -p1 -b .cve9788
 
 # Patch in the vendor string and the release string
 sed -i '/^#define PLATFORM/s/Unix/%{vstring}/' os/unix/os.h
@@ -956,6 +971,14 @@ rm -rf $RPM_BUILD_ROOT
 %endif
 
 %changelog
+* Wed Jul 26 2017 Luboš Uhliarik <luhliari@redhat.com> - 2.4.25-9.1
+- Resolves: #1473691 - CVE-2017-3167 CVE-2017-3169 CVE-2017-7659 CVE-2017-7668
+  CVE-2017-7679 CVE-2017-9788 httpd24-httpd: various flaws
+
+* Fri Mar 24 2017 Joe Orton <jorton@redhat.com> - 2.4.25-9
+- link only httpd, not support/* against -lselinux -lsystemd (#1433474)
+- don't enable SO_REUSEPORT in default configuration (#1432249)
+
 * Thu Mar  2 2017 Joe Orton <jorton@redhat.com> - 2.4.25-8
 - always require policycoreutils; fail silently if SELinux is disabled (#1376738)
 
