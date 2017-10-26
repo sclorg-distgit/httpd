@@ -48,8 +48,8 @@
 
 Summary: Apache HTTP Server
 Name: %{?scl:%scl_prefix}httpd
-Version: 2.4.25
-Release: 9%{?dist}.1
+Version: 2.4.27
+Release: 8%{?dist}
 URL: http://httpd.apache.org/
 Source0: http://www.apache.org/dist/httpd/httpd-%{version}.tar.bz2
 Source1: index.html
@@ -104,6 +104,7 @@ Patch28: httpd-2.4.6-r1332643+.patch
 Patch30: httpd-2.4.4-cachehardmax.patch
 Patch31: httpd-2.4.6-sslmultiproxy.patch
 Patch32: httpd-2.4.3-sslsninotreq.patch
+Patch33: httpd-2.4.26-sslalpnthunks.patch
 # Bug fixes
 Patch56: httpd-2.4.4-mod_unique_id.patch
 Patch59: httpd-2.4.6-r1556473.patch
@@ -111,25 +112,16 @@ Patch62: httpd-2.4.6-apachectl-status.patch
 Patch63: httpd-2.4.6-ab-overflow.patch
 Patch64: httpd-2.4.6-sigint.patch
 Patch65: httpd-2.4.17-autoindex-revert.patch
-Patch66: httpd-2.4.18-r1684636.patch
 Patch68: httpd-2.4.6-ap-ipv6.patch
 Patch69: httpd-2.4.6-apachectl-httpd-env.patch
 Patch70: httpd-2.4.6-bomb.patch
 Patch71: httpd-2.4.18-apachectl-httpd-env2.patch
-Patch72: httpd-2.4.18-r1738229.patch
-Patch73: httpd-2.4.25-r1778319+.patch
 Patch74: httpd-2.4.25-rev-r1748324+.patch
-Patch75: httpd-2.4.25-r1782332.patch
-Patch76: httpd-2.4.25-r1787301.patch
-
+Patch75: httpd-2.4.6-r1664565.patch
+Patch76: httpd-2.4.6-rotatelog-timezone.patch
+Patch77: httpd-2.4.27-mod_authz_dbd-missing-query.patch
 # Security fixes
-Patch200: httpd-2.4.25-CVE-2017-3167.patch
-Patch201: httpd-2.4.25-CVE-2017-3169.patch
-Patch202: httpd-2.4.25-CVE-2017-7659.patch
-Patch203: httpd-2.4.25-CVE-2017-7668.patch
-Patch204: httpd-2.4.25-CVE-2017-7679.patch
-Patch205: httpd-2.4.25-CVE-2017-9788.patch
-
+Patch200: httpd-2.4.27-CVE-2017-9798.patch
 License: ASL 2.0
 Group: System Environment/Daemons
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root
@@ -147,6 +139,7 @@ Provides: %{?scl:%scl_prefix}mod_dav = %{version}-%{release}, %{?scl:%scl_prefix
 Provides: %{?scl:%scl_prefix}httpd-mmn = %{mmn}, %{?scl:%scl_prefix}httpd-mmn = %{mmnisa}
 Requires: %{?scl:%scl_prefix}httpd-tools = %{version}-%{release}
 Requires(pre): /usr/sbin/useradd
+Requires(pre): /usr/sbin/groupadd
 %if %{use_systemd}
 BuildRequires: systemd-devel
 Requires(preun): systemd-units
@@ -288,11 +281,11 @@ export LD_LIBRARY_PATH=%{_libdir}:$LD_LIBRARY_PATH
 %if %{use_systemd}
 %patch6 -p1 -b .apctlsystemd
 %patch7 -p1 -b .skiplist
-%patch8 -p1 -b .detect-systemd
 %else
 %patch62 -p1 -b .apachectlstatus
 %patch71 -p1 -b .envhttpd2
 %endif
+%patch8 -p1 -b .detect-systemd
 
 %patch20 -p1 -b .mod_systemd
 %patch21 -p1 -b .fullrelease
@@ -305,28 +298,22 @@ export LD_LIBRARY_PATH=%{_libdir}:$LD_LIBRARY_PATH
 %patch30 -p1 -b .cachehardmax
 %patch31 -p1 -b .sslmultiproxy
 %patch32 -p1 -b .sslsninotreq
+#%patch33 -p1 -b .sslalpnthunks
 
 %patch56 -p1 -b .uniqueid
 %patch59 -p1 -b .r1556473
 %patch63 -p1 -b .aboverflow
 %patch64 -p1 -b .sigint
 %patch65 -p1 -b .autoindexrevert
-%patch66 -p1 -b .r1684636
 %patch68 -p1 -b .ipv6
 %patch69 -p1 -b .envhttpd
 %patch70 -p1 -b .bomb
-%patch72 -p1 -b .r1738229
-%patch73 -p1 -b .r1778319+
 %patch74 -p1 -b .rev-r1748324+
-%patch75 -p1 -b .r1782332
-%patch76 -p1 -b .r1787301
+%patch75 -p1 -b .r1664565
+%patch76 -p1 -b .rotatelogtimezone
+%patch77 -p1 -b .missingquery
 
-%patch200 -p1 -b .cve3167
-%patch201 -p1 -b .cve3169
-%patch202 -p1 -b .cve7659
-%patch203 -p1 -b .cve7668
-%patch204 -p1 -b .cve7679
-%patch205 -p1 -b .cve9788
+%patch200 -p1 -b .CVE-2017-9798
 
 # Patch in the vendor string and the release string
 sed -i '/^#define PLATFORM/s/Unix/%{vstring}/' os/unix/os.h
@@ -396,6 +383,9 @@ export LYNX_PATH=/usr/bin/links
         --with-pcre \
         --enable-mods-shared=all \
 	--enable-ssl --with-ssl --disable-distcache \
+%if 0%{?rhel} >= 7
+	--enable-tls-alpn-thunks \
+%endif
 	--enable-proxy \
         --enable-cache \
         --enable-disk-cache \
@@ -404,7 +394,6 @@ export LYNX_PATH=/usr/bin/links
         --enable-authn-anon --enable-authn-alias \
         --disable-imagemap  \
 	--localstatedir=%{_localstatedir}
-	$*
 make %{?_smp_mflags}
 
 %install
@@ -678,8 +667,9 @@ sed -i 's|\$sbindir|%{_sbindir}|' \
     %{buildroot}%{_sbindir}/apachectl
 
 %pre
-# Add the "apache" user
-/usr/sbin/useradd -c "Apache" -u 48 \
+# Add the "apache" group and user
+/usr/sbin/groupadd -g 48 -r apache 2> /dev/null || :
+/usr/sbin/useradd -c "Apache" -u 48 -g apache \
 	-s /sbin/nologin -r -d %{contentdir} apache 2> /dev/null || :
 
 %post
@@ -971,9 +961,54 @@ rm -rf $RPM_BUILD_ROOT
 %endif
 
 %changelog
-* Wed Jul 26 2017 Luboš Uhliarik <luhliari@redhat.com> - 2.4.25-9.1
-- Resolves: #1473691 - CVE-2017-3167 CVE-2017-3169 CVE-2017-7659 CVE-2017-7668
-  CVE-2017-7679 CVE-2017-9788 httpd24-httpd: various flaws
+* Wed Sep 20 2017 Luboš Uhliarik <luhliari@redhat.com> - 2.4.27-8
+- Resolves: #1480506 - mod_authz_dbd segfaults when AuthzDBDQuery missing
+
+* Mon Sep 18 2017 Luboš Uhliarik <luhliari@redhat.com> - 2.4.27-7
+- Related: #1487164 - apache user is not created during httpd
+  installation when apache group already exist with GID other than 48
+
+* Tue Sep 12 2017 Luboš Uhliarik <luhliari@redhat.com> - 2.4.27-6
+- Resolves: #1490947 - CVE-2017-9798 httpd: Use-after-free by limiting
+  unregistered HTTP method
+
+* Wed Sep 06 2017 Luboš Uhliarik <luhliari@redhat.com> - 2.4.27-5
+- Resolves: #1488541 - rotatelogs %Z does not use correct timezone
+  respecting DST
+
+* Thu Aug 31 2017 Luboš Uhliarik <luhliari@redhat.com> - 2.4.27-4
+- Resolves: #1486832 - RFE: run mod_rewrite external mapping program as non-root
+
+* Thu Aug 31 2017 Luboš Uhliarik <luhliari@redhat.com> - 2.4.27-3
+- Resolves: #1486843 - apache user is not created during httpd
+  installation when apache group already exist
+- Resolves: #1487164 - apache user is not created during httpd
+  installation when apache group already exist with GID other than 48
+
+* Tue Aug 08 2017 Luboš Uhliarik <luhliari@redhat.com> - 2.4.27-2
+- Resolves: #1475450 - update apr_skiplist to current APR code
+
+* Mon Jul 31 2017 Luboš Uhliarik <luhliari@redhat.com> - 2.4.27-1
+- new version 2.4.27
+
+* Wed Jul 26 2017 Luboš Uhliarik <luhliari@redhat.com> - 2.4.26-5
+- Resolves: #1472846 - CVE-2017-9788 CVE-2017-9789 httpd24-httpd: various flaws
+- updated mod_systemd patch
+
+* Mon Jun 26 2017 Luboš Uhliarik <luhliari@redhat.com> - 2.4.26-4
+- Resolves: #1440858 - graceful start of stopped service fail
+
+* Fri Jun 23 2017 Luboš Uhliarik <luhliari@redhat.com> - 2.4.26-3
+- Resolves: #1418395 - httpd stop prints failure if service already stopped
+
+* Thu Jun 22 2017 Joe Orton <jorton@redhat.com> - 2.4.26-2
+- mod_ssl: add support for ALPN if newer OpenSSL loaded (#1327548)
+
+* Mon Jun 19 2017 Luboš Uhliarik <luhliari@redhat.com> - 2.4.26-1
+- Resolves: #1461819 - RFE: rebase httpd to 2.4.26
+
+* Wed May 24 2017 Luboš Uhliarik <luhliari@redhat.com> - 2.4.25-12
+- rebuild
 
 * Fri Mar 24 2017 Joe Orton <jorton@redhat.com> - 2.4.25-9
 - link only httpd, not support/* against -lselinux -lsystemd (#1433474)

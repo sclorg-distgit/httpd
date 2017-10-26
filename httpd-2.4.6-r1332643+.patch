@@ -1,21 +1,8 @@
-# ./pullrev.sh 1332643 1345599 1487772
- 
-https://bugzilla.redhat.com//show_bug.cgi?id=809599
-
-Backport of (deprecated) NPN support from upstream, with
-added support for Protocols in the same way as ALPN is
-supported.
-
-Upstream commits:
-
-http://svn.apache.org/viewvc?view=revision&revision=1332643
-http://svn.apache.org/viewvc?view=revision&revision=1345599
-http://svn.apache.org/viewvc?view=revision&revision=1487772
-
-diff -uap httpd-2.4.18/modules/ssl/mod_ssl.c.r1332643+ httpd-2.4.18/modules/ssl/mod_ssl.c
---- httpd-2.4.18/modules/ssl/mod_ssl.c.r1332643+
-+++ httpd-2.4.18/modules/ssl/mod_ssl.c
-@@ -439,6 +439,13 @@ int ssl_engine_disable(conn_rec *c)
+diff --git a/modules/ssl/mod_ssl.c b/modules/ssl/mod_ssl.c
+index 987b256..c24c6e1 100644
+--- a/modules/ssl/mod_ssl.c
++++ b/modules/ssl/mod_ssl.c
+@@ -514,6 +514,13 @@ int ssl_engine_disable(conn_rec *c)
      return 1;
  }
  
@@ -29,7 +16,7 @@ diff -uap httpd-2.4.18/modules/ssl/mod_ssl.c.r1332643+ httpd-2.4.18/modules/ssl/
  int ssl_init_ssl_connection(conn_rec *c, request_rec *r)
  {
      SSLSrvConfigRec *sc;
-@@ -624,6 +631,7 @@ static void ssl_register_hooks(apr_pool_
+@@ -706,6 +713,7 @@ static void ssl_register_hooks(apr_pool_t *p)
  
      APR_REGISTER_OPTIONAL_FN(ssl_proxy_enable);
      APR_REGISTER_OPTIONAL_FN(ssl_engine_disable);
@@ -37,10 +24,11 @@ diff -uap httpd-2.4.18/modules/ssl/mod_ssl.c.r1332643+ httpd-2.4.18/modules/ssl/
  
      ap_register_auth_provider(p, AUTHZ_PROVIDER_GROUP, "ssl",
                                AUTHZ_PROVIDER_VERSION,
-diff -uap httpd-2.4.18/modules/ssl/mod_ssl.h.r1332643+ httpd-2.4.18/modules/ssl/mod_ssl.h
---- httpd-2.4.18/modules/ssl/mod_ssl.h.r1332643+
-+++ httpd-2.4.18/modules/ssl/mod_ssl.h
-@@ -63,5 +63,40 @@ APR_DECLARE_OPTIONAL_FN(int, ssl_proxy_e
+diff --git a/modules/ssl/mod_ssl.h b/modules/ssl/mod_ssl.h
+index db8ffaf..d381901 100644
+--- a/modules/ssl/mod_ssl.h
++++ b/modules/ssl/mod_ssl.h
+@@ -84,5 +84,40 @@ APR_DECLARE_OPTIONAL_FN(int, ssl_proxy_enable, (conn_rec *));
  
  APR_DECLARE_OPTIONAL_FN(int, ssl_engine_disable, (conn_rec *));
  
@@ -81,10 +69,11 @@ diff -uap httpd-2.4.18/modules/ssl/mod_ssl.h.r1332643+ httpd-2.4.18/modules/ssl/
 +
  #endif /* __MOD_SSL_H__ */
  /** @} */
-diff -uap httpd-2.4.18/modules/ssl/ssl_engine_init.c.r1332643+ httpd-2.4.18/modules/ssl/ssl_engine_init.c
---- httpd-2.4.18/modules/ssl/ssl_engine_init.c.r1332643+
-+++ httpd-2.4.18/modules/ssl/ssl_engine_init.c
-@@ -636,6 +636,11 @@ static void ssl_init_ctx_callbacks(serve
+diff --git a/modules/ssl/ssl_engine_init.c b/modules/ssl/ssl_engine_init.c
+index 9526f1b..12b2115 100644
+--- a/modules/ssl/ssl_engine_init.c
++++ b/modules/ssl/ssl_engine_init.c
+@@ -736,6 +736,11 @@ static void ssl_init_ctx_callbacks(server_rec *s,
  #ifdef HAVE_TLS_ALPN
      SSL_CTX_set_alpn_select_cb(ctx, ssl_callback_alpn_select, NULL);
  #endif
@@ -96,10 +85,11 @@ diff -uap httpd-2.4.18/modules/ssl/ssl_engine_init.c.r1332643+ httpd-2.4.18/modu
  }
  
  static apr_status_t ssl_init_ctx_verify(server_rec *s,
-diff -uap httpd-2.4.18/modules/ssl/ssl_engine_io.c.r1332643+ httpd-2.4.18/modules/ssl/ssl_engine_io.c
---- httpd-2.4.18/modules/ssl/ssl_engine_io.c.r1332643+
-+++ httpd-2.4.18/modules/ssl/ssl_engine_io.c
-@@ -319,6 +319,7 @@ typedef struct {
+diff --git a/modules/ssl/ssl_engine_io.c b/modules/ssl/ssl_engine_io.c
+index d1f44e9..26ee301 100644
+--- a/modules/ssl/ssl_engine_io.c
++++ b/modules/ssl/ssl_engine_io.c
+@@ -317,6 +317,7 @@ typedef struct {
      apr_pool_t *pool;
      char buffer[AP_IOBUFSIZE];
      ssl_filter_ctx_t *filter_ctx;
@@ -107,8 +97,8 @@ diff -uap httpd-2.4.18/modules/ssl/ssl_engine_io.c.r1332643+ httpd-2.4.18/module
  } bio_filter_in_ctx_t;
  
  /*
-@@ -1377,6 +1378,38 @@ static apr_status_t ssl_io_filter_input(
-         return ssl_io_filter_error(f, bb, status, is_init);
+@@ -1517,6 +1518,38 @@ static apr_status_t ssl_io_filter_input(ap_filter_t *f,
+         return ssl_io_filter_error(inctx, bb, status, is_init);
      }
  
 +#ifdef HAVE_TLS_NPN
@@ -146,7 +136,7 @@ diff -uap httpd-2.4.18/modules/ssl/ssl_engine_io.c.r1332643+ httpd-2.4.18/module
      if (is_init) {
          /* protocol module needs to handshake before sending
           * data to client (e.g. NNTP or FTP)
-@@ -1899,6 +1932,7 @@ static void ssl_io_input_add_filter(ssl_
+@@ -2041,6 +2074,7 @@ static void ssl_io_input_add_filter(ssl_filter_ctx_t *filter_ctx, conn_rec *c,
      inctx->block = APR_BLOCK_READ;
      inctx->pool = c->pool;
      inctx->filter_ctx = filter_ctx;
@@ -154,10 +144,11 @@ diff -uap httpd-2.4.18/modules/ssl/ssl_engine_io.c.r1332643+ httpd-2.4.18/module
  }
  
  /* The request_rec pointer is passed in here only to ensure that the
-diff -uap httpd-2.4.18/modules/ssl/ssl_engine_kernel.c.r1332643+ httpd-2.4.18/modules/ssl/ssl_engine_kernel.c
---- httpd-2.4.18/modules/ssl/ssl_engine_kernel.c.r1332643+
-+++ httpd-2.4.18/modules/ssl/ssl_engine_kernel.c
-@@ -2297,6 +2297,142 @@ int ssl_callback_SessionTicket(SSL *ssl,
+diff --git a/modules/ssl/ssl_engine_kernel.c b/modules/ssl/ssl_engine_kernel.c
+index 02acd22..dced334 100644
+--- a/modules/ssl/ssl_engine_kernel.c
++++ b/modules/ssl/ssl_engine_kernel.c
+@@ -2332,6 +2332,142 @@ int ssl_callback_SessionTicket(SSL *ssl,
  }
  #endif /* HAVE_TLS_SESSION_TICKETS */
  
@@ -300,7 +291,7 @@ diff -uap httpd-2.4.18/modules/ssl/ssl_engine_kernel.c.r1332643+ httpd-2.4.18/mo
  #ifdef HAVE_TLS_ALPN
  
  /*
-@@ -2319,8 +2455,6 @@ int ssl_callback_alpn_select(SSL *ssl,
+@@ -2354,8 +2490,6 @@ int ssl_callback_alpn_select(SSL *ssl,
      conn_rec *c = (conn_rec*)SSL_get_app_data(ssl);
      SSLConnRec *sslconn = myConnConfig(c);
      apr_array_header_t *client_protos;
@@ -309,7 +300,7 @@ diff -uap httpd-2.4.18/modules/ssl/ssl_engine_kernel.c.r1332643+ httpd-2.4.18/mo
      int i;
  
      /* If the connection object is not available,
-@@ -2350,40 +2484,7 @@ int ssl_callback_alpn_select(SSL *ssl,
+@@ -2385,40 +2519,7 @@ int ssl_callback_alpn_select(SSL *ssl,
          i += plen;
      }
  
@@ -351,9 +342,10 @@ diff -uap httpd-2.4.18/modules/ssl/ssl_engine_kernel.c.r1332643+ httpd-2.4.18/mo
  }
  #endif /* HAVE_TLS_ALPN */
  
-diff -uap httpd-2.4.18/modules/ssl/ssl_private.h.r1332643+ httpd-2.4.18/modules/ssl/ssl_private.h
---- httpd-2.4.18/modules/ssl/ssl_private.h.r1332643+
-+++ httpd-2.4.18/modules/ssl/ssl_private.h
+diff --git a/modules/ssl/ssl_private.h b/modules/ssl/ssl_private.h
+index 41b4387..7c440ef 100644
+--- a/modules/ssl/ssl_private.h
++++ b/modules/ssl/ssl_private.h
 @@ -98,6 +98,8 @@
  #include <openssl/x509_vfy.h>
  #include <openssl/ocsp.h>
@@ -375,7 +367,7 @@ diff -uap httpd-2.4.18/modules/ssl/ssl_private.h.r1332643+ httpd-2.4.18/modules/
  #if defined(SSL_OP_NO_TLSv1_2)
  #define HAVE_TLSV1_X
  #endif
-@@ -816,6 +823,10 @@ int          ssl_callback_ServerNameIndi
+@@ -872,6 +879,10 @@ int          ssl_callback_ServerNameIndication(SSL *, int *, modssl_ctx_t *);
  int         ssl_callback_SessionTicket(SSL *, unsigned char *, unsigned char *,
                                         EVP_CIPHER_CTX *, HMAC_CTX *, int);
  #endif

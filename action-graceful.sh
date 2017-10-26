@@ -1,5 +1,2 @@
 #!/bin/sh
-if [ -r $sysconfdir/httpd ]; then
-   . $sysconfdir/httpd
-fi
-exec $sbindir/httpd-scl-wrapper -k graceful
+exec $sbindir/apachectl graceful

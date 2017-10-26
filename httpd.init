@@ -71,8 +71,14 @@ start() {
 # before SIGKILLing the httpd parent; this gives enough time for the
 # httpd parent to SIGKILL any errant children.
 stop() {
-	echo -n $"Stopping $prog: "
-	killproc -p ${pidfile} -d ${STOP_TIMEOUT} $httpd
+	status -p ${pidfile} $httpd > /dev/null
+	if [[ $? = 0 ]]; then
+		echo -n $"Stopping $prog: "
+		killproc -p ${pidfile} -d ${STOP_TIMEOUT} $httpd
+	else
+		echo -n $"Stopping $prog: "
+		success
+	fi
 	RETVAL=$?
 	echo
 	[ $RETVAL = 0 ] && rm -f ${lockfile} ${pidfile}
